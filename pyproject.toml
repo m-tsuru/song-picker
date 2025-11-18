@@ -5,10 +5,14 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "dotenv>=0.9.9",
+    "python-dotenv>=1.2.1",
+    "spotipy>=2.25.1",
     "streamlit>=1.51.0",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "ruff>=0.14.4",
-]
+dev = ["ruff>=0.14.4"]
+
+# [tool.streamlit.component."song_picker"]
+# path = "src/picker_component"

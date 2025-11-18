@@ -1,0 +1,9 @@
+{
+    "editor.formatOnSave": true,
+    "[html,javascript,css]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff"
+    }
+}
