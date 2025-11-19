@@ -29,17 +29,70 @@ sp = spotipy.Spotify(client_credentials_manager=spotify_credentials)
 
 
 def get_spotify_playlist_tracks(playlist_id: str):
-    results = sp.playlist(
+    """
+    Spotifyプレイリストから全ての曲を取得(ページネーション対応)
+
+    Args:
+        playlist_id: SpotifyプレイリストID
+
+    Returns:
+        tuple: (track_ids のリスト, 全プレイリストデータ)
+    """
+    all_items = []
+    track_ids = []
+
+    # 初回リクエスト (limit=100で最大件数を取得)
+    results = sp.playlist_tracks(
         playlist_id,
-        fields="tracks.items(track(name,id,artists(name,id),album(name,id,images.url.0)).0)",
+        fields="items(track(name,id,artists(name,id),album(name,id,images))),next,total",
         market="JP",
+        limit=100,
     )
-    track_ids = [
-        item["track"]["id"]
-        for item in results.get("tracks", {}).get("items", [])
-        if item.get("track") and item["track"].get("id")
-    ]
-    return track_ids, results
+
+    items = results.get("items", [])
+    all_items.extend(items)
+
+    # track_idsを収集
+    for item in items:
+        if item.get("track") and item["track"].get("id"):
+            track_ids.append(item["track"]["id"])
+
+    # 次のページがある場合は繰り返し取得
+    next_url = results.get("next")
+    total = results.get("total", 0)
+
+    print(f"Total tracks in playlist: {total}")
+    print(f"Fetched: {len(all_items)}/{total}")
+
+    while next_url:
+        # 次のページを取得
+        results = sp.next(results)
+        if not results:
+            break
+
+        items = results.get("items", [])
+        all_items.extend(items)
+
+        # track_idsを収集
+        for item in items:
+            if item.get("track") and item["track"].get("id"):
+                track_ids.append(item["track"]["id"])
+
+        next_url = results.get("next")
+
+        print(f"Fetched: {len(all_items)}/{total}")
+
+    # 結果を元の形式で返す (sp.playlistの戻り値形式に合わせる)
+    full_results = {
+        "tracks": {
+            "items": all_items,
+            "total": total,
+        }
+    }
+
+    print(f"Completed: Fetched {len(track_ids)} tracks")
+
+    return track_ids, full_results
 
 
 def get_reccobeats_id_from_spotify_id(spotify_track_ids: list[str]):

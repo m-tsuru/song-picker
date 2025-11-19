@@ -143,12 +143,15 @@ sample_songs = {
 }
 
 
-def generate_sample_songs_from_dataframe(df: pd.DataFrame) -> dict:
+def generate_sample_songs_from_dataframe(
+    df: pd.DataFrame, center_track_id: str = None
+) -> dict:
     """
     DataFrameからランダムに中心曲を選び、テンポとキーに基づいてsample_songsを生成
 
     Args:
         df: プレイリストのDataFrame (tempo, key列を含む)
+        center_track_id: 中心にする曲のtrack_id (指定がない場合はランダム)
 
     Returns:
         sample_songs形式の辞書
@@ -174,8 +177,17 @@ def generate_sample_songs_from_dataframe(df: pd.DataFrame) -> dict:
     if valid_df.empty:
         return {"left": [], "right": [], "top": [], "bottom": [], "center": []}
 
-    # ランダムに中心曲を選択
-    center_song = valid_df.sample(n=1).iloc[0]
+    # 中心曲を選択
+    if center_track_id:
+        center_candidates = valid_df[valid_df["track_id"] == center_track_id]
+        if not center_candidates.empty:
+            center_song = center_candidates.iloc[0]
+        else:
+            # 指定されたIDが見つからない場合はランダム
+            center_song = valid_df.sample(n=1).iloc[0]
+    else:
+        center_song = valid_df.sample(n=1).iloc[0]
+
     center_tempo = center_song["tempo"]
     center_key = int(center_song["key"])
 
@@ -267,38 +279,6 @@ def get_pick_song(spotify_track_id: str, songs_data: dict) -> dict | None:
         }
         return pick
     return None
-
-
-def get_audio_features_from_rapidapi(track_ids: list) -> dict:
-    """
-    RapidAPIのtrack-analysisエンドポイントを使用してオーディオ特徴を取得
-
-    Returns:
-        dict: track_id -> audio features のマッピング
-    """
-    rapidapi_key = os.environ.get("RAPIDAPI_KEY")
-    if not rapidapi_key:
-        return {}
-
-    audio_features_map = {}
-
-    for track_id in track_ids:
-        url = f"https://track-analysis.p.rapidapi.com/pktx/spotify/{track_id}"
-        headers = {
-            "x-rapidapi-key": rapidapi_key,
-            "x-rapidapi-host": "track-analysis.p.rapidapi.com",
-        }
-
-        try:
-            response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                result = response.json()
-                audio_features_map[track_id] = result
-        except Exception as e:
-            st.warning(f"Failed to fetch audio features for track {track_id}: {e}")
-            continue
-
-    return audio_features_map
 
 
 def convert_playlist_to_dataframe(
@@ -446,9 +426,21 @@ if __name__ == "__main__":
 
     col_result_popover = st.popover("Result", use_container_width=True)
 
-    playlist_filename = col_playlist_url.text_input(
-        "Enter Retrieve Filename:",
-        "playlist_export.csv",
+    # playlist_filename = col_playlist_url.text_input(
+    #     "Enter Retrieve Filename:",
+    #     "playlist_export.csv",
+    # )
+
+    playlist_options = {
+        "the_first_take.csv": "FROM THE FIRST TAKE (Author: THE FIRST TAKE)",
+        "heisei_anime.csv": "平成アニメソング (Author: Flitr Japan)",
+        "heisei_drama.csv": "Storm Music! 平成ドラマ (Author: Storm Music)",
+    }
+
+    playlist_filename = col_playlist_url.selectbox(
+        "サンプルファイルを選択",
+        options=list(playlist_options.keys()),  # 内部値
+        format_func=lambda x: playlist_options[x],  # 表示名
     )
 
     if col_fetch.button("Fetch", use_container_width=True):
@@ -538,3 +530,26 @@ if __name__ == "__main__":
         if new_pick and new_pick != st.session_state.pick:
             st.session_state.pick = new_pick
             st.rerun()
+
+    # クリックされた曲を取得して sample_songs を再生成
+    if props.get("clicked"):
+        clicked_track_id = props.get("clicked")
+        # 現在のcenterと違う場合のみ再生成 (無限ループ防止)
+        current_center_id = (
+            st.session_state.sample_songs["center"][0]["track_id"]
+            if st.session_state.sample_songs["center"]
+            else None
+        )
+
+        if clicked_track_id != current_center_id and st.session_state.df is not None:
+            with st.spinner("Regenerating sample songs..."):
+                generated_songs = generate_sample_songs_from_dataframe(
+                    st.session_state.df, center_track_id=clicked_track_id
+                )
+                st.session_state.sample_songs = generated_songs
+
+                # centerの曲をpickとして設定
+                if generated_songs["center"]:
+                    st.session_state.pick = generated_songs["center"][0]
+
+                st.rerun()
